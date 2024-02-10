@@ -1,0 +1,1221 @@
+---
+title: "NYC_CRIME_ANALYSIS_REPORT"
+output: html_document
+date: "2023-11-16"
+---
+
+###INTRODUCTION
+
+###NYC_CRIME Dataset
+```{r}
+data <- read.csv("NYPD_Complaint_Data_Current__Year_To_Date_.csv",stringsAsFactors = FALSE)
+# Example: Replace (null) with NA
+data[data == "(null)"] <- NA
+
+```
+```{r pressure, echo=FALSE}
+data
+```
+
+###DATA CLEANING
+```{r}
+columns_to_drop <- c(
+  "KY_CD",
+  "HOUSING_PSA",
+  "JURISDICTION_CODE",
+  "JURIS_DESC",
+  "PARKS_NM",
+  "STATION_NAME",
+  "TRANSIT_DISTRICT",
+  "HADEVELOPT",
+  "X_COORD_CD",
+  "Y_COORD_CD",
+  "Community.Districts","City.Council.Districts","Police.Precincts","New.Georeferenced.Column","Lat_Lon"
+)
+data_new <- data[, !(names(data) %in% columns_to_drop)]
+data_new
+```
+```{r}
+# This code will give you the count of NA values in each column
+na_count <- colSums(is.na(data_new))
+
+# Print the result
+print(na_count)
+
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+# Convert the CMPLNT_FR_DT column to Date format
+data_new$CMPLNT_FR_DT <- as.Date(data_new$CMPLNT_FR_DT, format = "%m/%d/%Y")
+
+# Group by year and count the occurrences
+result <- data_new %>%
+  group_by(year = lubridate::year(CMPLNT_FR_DT)) %>%
+  summarise(count = n())
+
+# Print the result
+print(result)
+
+```
+
+```{r}
+# Load the required library
+library(dplyr)
+
+# Convert the CMPLNT_FR_DT column to Date format
+data_new$CMPLNT_FR_DT <- as.Date(data_new$CMPLNT_FR_DT, format = "%m/%d/%Y")
+
+# Drop rows before the year 2013
+data <- data_new %>%
+  filter(year(CMPLNT_FR_DT) >= 2023)
+
+# Print the filtered data
+print(data)
+
+```
+```{r}
+
+# Load necessary packages
+library(dplyr)
+library(lubridate)
+
+# Change the field to the correct datatype and filter the data for the year 2023
+data$CMPLNT_TO_DT <- as.Date(data$CMPLNT_TO_DT, format="%m/%d/%Y")
+data <- data[data$CMPLNT_TO_DT >= as.Date('2023-01-01'), ]
+
+# Create the columns for DayofWeek, Month, and Date for the date column
+data$CMPLNT_TO_dataW <- weekdays(data$CMPLNT_TO_DT)
+data$CMPLNT_TO_MONTH <- format(data$CMPLNT_TO_DT, '%B')
+data$CMPLNT_TO_DT <- as.Date(data$CMPLNT_TO_DT)
+
+data$RPT_DT <- as.Date(data$RPT_DT, format="%m/%d/%Y")
+data$RPT_dataW <- weekdays(data$RPT_DT)
+data$RPT_DT <- as.Date(data$RPT_DT)
+
+# Removing minutes and hours from the time column to use it in visualization
+data$CMPLNT_FR_TM <- format(as.POSIXct(data$CMPLNT_FR_TM, format="%H:%M:%S"), format="%H")
+
+# Replace the (null) values in the time column with zero hours
+data$CMPLNT_TO_TM <- ifelse(data$CMPLNT_TO_TM == "(null)", "00:00:00", data$CMPLNT_TO_TM)
+data$CMPLNT_TO_TM <- format(as.POSIXct(data$CMPLNT_TO_TM, format="%H:%M:%S"), format="%H")
+```
+
+```{r}
+# Drop rows with NA values in CMPLNT_NUM and other columns
+data <- na.omit(data[, c("CMPLNT_NUM", colnames(data)[!colnames(data) %in% "CMPLNT_NUM"])])
+
+# Print the number of rows and columns after removing NAs
+cat("Number of rows and columns after removing NAs:", nrow(data), "rows,", ncol(data), "columns\n")
+
+```
+###Exploratory Data Analysis
+```{r}
+
+# Filter out rows with missing or null values in BORO_NM or CMPLNT_NUM
+filtered_data_boro <- data %>%
+  filter(!is.na(BORO_NM) & !is.na(CMPLNT_NUM))
+
+# Group by BORO_NM and calculate the count of rows for each borough
+plot_data_boro <- filtered_data_boro %>%
+  group_by(BORO_NM) %>%
+  summarise(Total_CMPLNT_NUM = n()) 
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_boro <- plot_data_boro[order(-plot_data_boro$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_boro, aes(x = reorder(BORO_NM, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "CMPLNT_NUM by Borough", x = "Borough", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+#Filtering Data: Removing Null Values in 'SUSP_AGE_GROUP' and 'CMPLNT_NUM'
+#Data Aggregation: Counting Complaints by Suspect Age Group
+#Sorting Age Groups: Arranging Data by Complaint Count
+#Visualization: Plotting Complaint Counts by Suspect Age Group with ggplot2
+```{r}
+
+# Filter out rows with missing or null values in SUSP_AGE_GROUP or CMPLNT_NUM
+filtered_data_age <- data %>%
+  filter(!is.na(SUSP_AGE_GROUP) & !is.na(CMPLNT_NUM))
+
+# Group by SUSP_AGE_GROUP and calculate the count of rows for each age group
+plot_data_age <- filtered_data_age %>%
+  group_by(SUSP_AGE_GROUP) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(7, Total_CMPLNT_NUM)  # Keep only the top 12 age groups
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_age <- plot_data_age[order(-plot_data_age$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_age, aes(x = reorder(SUSP_AGE_GROUP, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "CMPLNT_NUM by Suspect Age Group", x = "Suspect Age Group", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+#Filtering Data: Removing Null Values in 'SUSP_AGE_GROUP' and 'CMPLNT_NUM'
+#Data Aggregation: Counting Complaints by Suspect Age Group
+#Sorting Age Groups: Arranging Data by Complaint Count
+#Visualization: Plotting Complaint Counts by Suspect Age Group with ggplot2
+
+```{r}
+# Filter out rows with missing or null values in SUSP_RACE, VIC_RACE, or CMPLNT_NUM
+filtered_data_race <- data %>%
+  filter(!is.na(SUSP_RACE) & !is.na(VIC_RACE) & !is.na(CMPLNT_NUM))
+
+# Group by SUSP_RACE and calculate the count of rows for each suspect race
+plot_data_susp_race <- filtered_data_race %>%
+  group_by(SUSP_RACE) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(12, Total_CMPLNT_NUM)  # Keep only the top 12 suspect races
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_susp_race <- plot_data_susp_race[order(-plot_data_susp_race$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_susp_race, aes(x = reorder(SUSP_RACE, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "Top 12 CMPLNT_NUM by Suspect Race", x = "Suspect Race", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Group by VIC_RACE and calculate the count of rows for each victim race
+plot_data_vic_race <- filtered_data_race %>%
+  group_by(VIC_RACE) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(12, Total_CMPLNT_NUM)  # Keep only the top 12 victim races
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_vic_race <- plot_data_vic_race[order(-plot_data_vic_race$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_vic_race, aes(x = reorder(VIC_RACE, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "Top 12 CMPLNT_NUM by Victim Race", x = "Victim Race", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+###Visualizing Monthly Trends: Plotting the Number of Complaints Per Month
+
+```{r}
+# Monthly variation in complaints
+#monthly_counts <- data %>%
+#  group_by(Month = lubridate::month(CMPLNT_FR_DT)) %>%
+#  summarise(Complaints = n())
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+library(scales) # For formatting numbers
+
+# First, ensure that the data is sorted by month
+
+# Assume 'data' is your data frame and 'CMPLNT_FR_DT' is the date column in the format "yyyy-mm-dd"
+# Convert 'CMPLNT_FR_DT' to Date type if it's not already
+data$CMPLNT_FR_DT <- as.Date(data$CMPLNT_FR_DT)
+
+# Group data by month and count complaints
+monthly_counts <- data %>%
+  group_by(Month = month(CMPLNT_FR_DT, label = TRUE, abbr = FALSE)) %>%
+  summarise(Complaints = n()) %>%
+  mutate(Month = factor(Month, levels = month.name))  # Ensure months are in chronological order
+
+# Create the plot
+ggplot(monthly_counts, aes(x = Month, y = Complaints, group = 1)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = Complaints), vjust = -0.5, color = "black") +
+  scale_x_discrete(limits = month.name) +  # Ensure that all months are displayed, even those without data
+  labs(title = "Monthly Complaints",
+       x = "Month",
+       y = "Number of Complaints") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+###Analyzing Weekly Patterns: Complaint Distribution Across Days of the Week
+
+```{r}
+# Day-of-week patterns
+day_of_week_counts <- data %>%
+  group_by(Day_of_Week = lubridate::wday(CMPLNT_FR_DT, label = TRUE)) %>%
+  summarise(Complaints = n())
+
+ggplot(day_of_week_counts, aes(x = Day_of_Week, y = Complaints, fill = Day_of_Week)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Complaints), vjust = -0.5) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Complaints by Day of the Week", 
+       x = "Day of the Week", 
+       y = "Number of Complaints") +
+  theme_bw(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+###Time Series Analysis: Tracking Complaints by Hour of the Day
+
+```{r}
+library(dplyr)
+# Time-of-day analysis 
+data$CMPLNT_FR_TM <- as.POSIXct(data$CMPLNT_FR_TM, format = "%H:%M:%S")
+hourly_counts <- data %>%
+  group_by(Hour = hour(CMPLNT_FR_TM)) %>%
+  summarise(Complaints = n())
+
+library(ggplot2)
+library(scales)
+
+ggplot(hourly_counts, aes(x = Hour, y = Complaints)) +
+  geom_line(group = 1, color = "darkgreen", size = 1) +
+  geom_smooth(method = 'loess', formula = 'y ~ x', se = FALSE, color = "blue") +
+  scale_x_continuous(breaks = 0:23, labels = c("12 AM", "1 AM", "2 AM", "3 AM", "4 AM", 
+                                               "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", 
+                                               "10 AM", "11 AM", "12 PM", "1 PM", "2 PM", 
+                                               "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", 
+                                               "8 PM", "9 PM", "10 PM", "11 PM")) +
+  labs(title = "Complaints by Hour of the Day", 
+       x = "Hour of the Day", 
+       y = "Number of Complaints") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+###Visualizing Complaint Patterns: Heatmap of Complaint Frequency by Hour and Day of Week
+
+```{r}
+library(dplyr)
+# Create a new dataframe for heatmap
+heatmap_data <- data %>%
+  mutate(Hour = hour(CMPLNT_FR_TM),
+         DayOfWeek = wday(CMPLNT_FR_DT, label = TRUE)) %>%
+  group_by(Hour, DayOfWeek) %>%
+  summarise(Complaints = n(), .groups = "drop")
+
+# Create the heatmap
+ggplot(heatmap_data, aes(x = Hour, y = DayOfWeek, fill = Complaints)) +
+  geom_tile() +
+  scale_fill_gradient(low = "blue", high = "orange") +
+  labs(title = "Heatmap of Complaints by Time of Day and Day of Week",
+       x = "Hour of Day",
+       y = "Day of Week",
+       fill = "Number of Complaints") +
+  theme_minimal()
+```
+
+
+### Crime Trends by Borough
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Group and summarize the data
+complaints_by_borough <- data %>%
+  group_by(BORO_NM, OFNS_DESC) %>%
+  summarise(Complaints = n(), .groups = "drop") %>%
+  arrange(BORO_NM, desc(Complaints))
+complaints_by_borough
+```
+###Borough-wise Offense Analysis: Comparing Complaints by Offense Type Across Boroughs
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Example data
+complaints_by_borough <- data.frame(
+  BORO_NM = c(rep("BRONX", 10), rep("BROOKLYN", 10)),
+  OFNS_DESC = c("HARRASSMENT 2", "PETIT LARCENY", "ASSAULT 3 & RELATED OFFENSES", "CRIMINAL MISCHIEF & RELATED OF", "FELONY ASSAULT", "GRAND LARCENY", "VEHICLE AND TRAFFIC LAWS", "GRAND LARCENY OF MOTOR VEHICLE", "ROBBERY", "OFF. AGNST PUB ORD SENSBLTY &", "HARRASSMENT 2", "PETIT LARCENY", "ASSAULT 3 & RELATED OFFENSES", "CRIMINAL MISCHIEF & RELATED OF", "FELONY ASSAULT", "GRAND LARCENY", "VEHICLE AND TRAFFIC LAWS", "MISCELLANEOUS PENAL LAW", "OFF. AGNST PUB ORD SENSBLTY &", "ROBBERY"),
+  Complaints = c(14050, 13554, 10958, 6656, 6244, 5972, 4113, 4001, 3646, 3313, 19008, 21381, 12111, 9248, 5872, 9225, 5639, 4678, 4010, 3142)
+)
+# Bar plot
+ggplot(complaints_by_borough, aes(x = OFNS_DESC, y = Complaints, fill = BORO_NM)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  theme_minimal() +
+  labs(title = "Complaints by Offense Type and Borough", x = "Offense Type", y = "Number of Complaints") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+```
+###Victim Demographics
+```{r}
+# Install dplyr package if it's not already installed
+install.packages("dplyr")
+
+# Load the dplyr package
+library(dplyr)
+
+# Now your code should work
+victim_demographics <- data %>%
+  group_by(VIC_AGE_GROUP, VIC_SEX, VIC_RACE) %>%
+  summarise(Complaints = n(), .groups = "drop")
+
+# View the result
+print(victim_demographics)
+
+```
+###Demographic Analysis: Complaints by Victim's Age, Gender, and Race
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Assuming the data is already in a data frame named victim_demographics
+# Example data (use your full dataset)
+victim_demographics <- data.frame(
+  VIC_AGE_GROUP = c("18-24", "18-24", "25-44", "25-44", "45-64", "45-64"),
+  VIC_SEX = c("F", "M", "F", "M", "F", "M"),
+  VIC_RACE = c("BLACK", "WHITE", "ASIAN / PACIFIC ISLANDER", "BLACK", "WHITE HISPANIC", "UNKNOWN"),
+  Complaints = c(7075, 2498, 6312, 18649, 7090, 1619)
+)
+
+# Plot
+ggplot(victim_demographics, aes(x = VIC_RACE, y = Complaints, fill = VIC_SEX)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  facet_grid(~ VIC_AGE_GROUP) +
+  theme_minimal() +
+  labs(title = "Victim Demographics: Complaints by Age Group, Sex, and Race",
+       x = "Victim Race",
+       y = "Number of Complaints") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+###Time Series Analysis
+
+```{r}
+# Time series analysis
+library(ggplot2)
+library(dplyr)
+
+# Create a time series plot of the number of complaints per month
+monthly_time_series <- data %>%
+  group_by(Month = lubridate::floor_date(CMPLNT_FR_DT, unit = "month")) %>%
+  summarise(Complaints = n())
+
+# Plotting the time series
+ggplot(monthly_time_series, aes(x = Month, y = Complaints)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(title = "Monthly Complaints Trend", x = "Month", y = "Number of Complaints") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+###Heatmap of Crime Density
+
+```{r}
+ #Load necessary libraries
+# Install the latest version of htmltools
+#install.packages("htmltools")
+#install.packages("leaflet")
+# Load the updated version
+library(htmltools)
+# Now try loading the leaflet package
+library(leaflet)
+library(leaflet.extras)
+library(dplyr)
+
+# Convert "Latitude" and "Longitude" to numeric if they are not already
+data$Latitude <- as.numeric(data$Latitude)
+data$Longitude <- as.numeric(data$Longitude)
+
+# Filter out rows with missing or null values in Latitude or Longitude
+filtered_data_location <- data[!is.na(data$Latitude) & !is.na(data$Longitude), ]
+
+# Create a leaflet map centered around New York City
+crime_map <- leaflet() %>%
+  setView(lng = -73.975, lat = 40.75, zoom = 11)  # Adjust the coordinates and zoom level as needed
+
+# Add OpenStreetMap tiles as the basemap
+crime_map <- addTiles(crime_map)
+
+# Add a heatmap layer using latitude and longitude data
+crime_map <- addHeatmap(
+  map = crime_map,
+  data = filtered_data_location,
+  lat = ~Latitude,
+  lng = ~Longitude,
+  radius = 20  # Adjust the radius as needed
+)
+
+# Display the map
+crime_map
+```
+###Offense Analysis: Ranking Top 12 Offense Descriptions by Complaint Numbers
+
+```{r}
+# Install and load necessary packages
+#install.packages(c("ggplot2", "dplyr"))
+library(ggplot2)
+library(dplyr)
+
+# Filter out rows with missing or null values in OFNS_DESC or CMPLNT_NUM
+filtered_data <- data %>%
+  filter(!is.na(OFNS_DESC) & !is.na(CMPLNT_NUM))
+
+# Group by OFNS_DESC and calculate the count of rows for each offense description
+plot_data <- filtered_data %>%
+  group_by(OFNS_DESC) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(12, Total_CMPLNT_NUM)
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data <- plot_data[order(-plot_data$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+# Plotting using ggplot2
+ggplot(plot_data, aes(x = reorder(OFNS_DESC, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "Top 12 CMPLNT_NUM by Offense Description", x = "Offense Description", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+###Importing libraries
+```{r}
+# Load necessary packages
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+```
+###Case Outcome Distribution: Pie Chart Analysis of Incident Completion Status
+
+```{r}
+# Group the data by CRM_ATPT_CPTD_CD and count the incidents
+case_status <- data %>%
+  group_by(CRM_ATPT_CPTD_CD) %>%
+  summarise(CMPLNT_NUM = n())
+
+# Calculate the percentage
+case_status <- case_status %>%
+  mutate(Percentage = (CMPLNT_NUM / sum(CMPLNT_NUM)) * 100,
+         Percentage = round(Percentage, 1))
+
+# Set colors
+colors <- c('#F47A1F', '#868686')
+
+# Plot the pie chart
+pie(case_status$Percentage, labels = paste(case_status$CRM_ATPT_CPTD_CD, sprintf("%.1f%%", case_status$Percentage)), 
+    col = colors, main = 'Percentage of Status of the Cases', init.angle = 60)
+legend("bottomleft", legend = paste(case_status$CRM_ATPT_CPTD_CD, sprintf("%.1f%%", case_status$Percentage)), fill = colors)
+
+```
+###Age Group Transformation and Categorization in Crime Data
+
+```{r}
+# Define a get_age_label function that handles missing values
+get_age_label <- function(age) {
+  if (is.na(age)) {
+    return("Unknown")
+  } else if (age < 18) {
+    return("Young")
+  } else if (age >= 18 && age < 65) {
+    return("Adult")
+  } else {
+    return("Senior")
+  }
+}
+
+#Transform Age group of the suspect
+data$SUSP_AGE <- as.numeric(sub('.*-(\\d+).*', '\\1', data$SUSP_AGE_GROUP))
+
+# Fill missing values with the mean age group
+mean_age_group_susp <- mean(data$SUSP_AGE, na.rm = TRUE)
+data$SUSP_AGE <- ifelse(data$SUSP_AGE < 0 | data$SUSP_AGE > 100, mean_age_group_susp, data$SUSP_AGE)
+data$SUSP_AGE[is.na(data$SUSP_AGE)] <- mean_age_group_susp
+
+# Transform Age group of the suspect using get_age_label function
+data$SUSP_AGE_LAB <- sapply(data$SUSP_AGE, get_age_label)
+
+# ransform Age group of the victim
+data$VIC_AGE <- as.numeric(sub('.*-(\\d+).*', '\\1', data$VIC_AGE_GROUP))
+
+# Fill missing values with the mean age group
+mean_age_group_vic <- mean(data$VIC_AGE, na.rm = TRUE)
+data$VIC_AGE <- ifelse(data$VIC_AGE < 0 | data$VIC_AGE > 100, mean_age_group_vic, data$VIC_AGE)
+data$VIC_AGE[is.na(data$VIC_AGE)] <- mean_age_group_vic
+
+# Transform Age group of the victim using get_age_label function
+data$VIC_AGE_LAB <- sapply(data$VIC_AGE, get_age_label)
+
+
+```
+###Racial Analysis of Suspects: Identifying Top 6 Races by Complaint Numbers
+###Racial Analysis of Victims: Highlighting Top 12 Races in Complaint Data
+
+```{r}
+# Filter out rows with missing or null values in SUSP_RACE, VIC_RACE, or CMPLNT_NUM
+filtered_data_race <- data %>%
+  filter(!is.na(SUSP_RACE) & !is.na(VIC_RACE) & !is.na(CMPLNT_NUM))
+
+# Group by SUSP_RACE and calculate the count of rows for each suspect race
+plot_data_susp_race <- filtered_data_race %>%
+  group_by(SUSP_RACE) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(6, Total_CMPLNT_NUM)
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_susp_race <- plot_data_susp_race[order(-plot_data_susp_race$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_susp_race, aes(x = reorder(SUSP_RACE, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "Top 12 CMPLNT_NUM by Suspect Race", x = "Suspect Race", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Group by VIC_RACE and calculate the count of rows for each victim race
+plot_data_vic_race <- filtered_data_race %>%
+  group_by(VIC_RACE) %>%
+  summarise(Total_CMPLNT_NUM = n()) %>%
+  top_n(12, Total_CMPLNT_NUM)  # Keep only the top 12 victim races
+
+# Sort the data by Total_CMPLNT_NUM in descending order
+plot_data_vic_race <- plot_data_vic_race[order(-plot_data_vic_race$Total_CMPLNT_NUM), ]
+
+# Plotting using ggplot2
+ggplot(plot_data_vic_race, aes(x = reorder(VIC_RACE, Total_CMPLNT_NUM), y = Total_CMPLNT_NUM)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Total_CMPLNT_NUM), vjust = -0.5, size = 3) +  # Add data labels
+  labs(title = "Top 12 CMPLNT_NUM by Victim Race", x = "Victim Race", y = "Total CMPLNT_NUM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+summary(data)
+```
+###Borough-wise Complaint Analysis: Visualizing the Distribution of Complaints Across Boroughs
+###Temporal Analysis: Scatter Plot of Complaint Dates and Times
+
+```{r}
+library(dplyr)
+library(ggplot2)
+# Plotting using ggplot2
+ggplot(data, aes(x = BORO_NM, fill = BORO_NM)) +
+  geom_bar() +
+  labs(title = "Distribution of Complaints by Borough")
+
+# Scatter plot of CMPLNT_FR_DT and CMPLNT_FR_TM
+ggplot(data, aes(x = CMPLNT_FR_DT, y = CMPLNT_FR_TM)) +
+  geom_point() +
+  labs(title = "Scatter plot of Complaint Date and Time")
+```
+
+
+```{r}
+table(data$Outcome)
+```
+###Importing and Displaying Data: Reading NYC Weather Information from Excel File
+
+```{r}
+#install.packages("openxlsx")
+library(openxlsx)
+
+# Specify the file path
+file_path <- "NYC_Weather.xlsx"
+
+# Read the Excel file
+data_weather <- read.xlsx(file_path)
+
+# Display the data
+print(data_weather)
+```
+###Data Conversion: Transforming Weather Data Dates to Standard Format
+
+```{r}
+data_weather$Date <- as.Date(data_weather$Date, origin =  "1899-12-30")
+# Print the updated data
+print(data_weather)
+```
+###Data Integration: Merging Crime Data with Weather Information by Date
+
+```{r}
+# Convert CMPLNT_FR_DT to Date format
+data$CMPLNT_TO_DT <- as.Date(data$CMPLNT_TO_DT, format = "%m/%d/%Y")
+
+# Merge the datasets
+merged_data <- merge(data, data_weather, by.x = "CMPLNT_TO_DT", by.y = "Date", all.x = TRUE)
+
+# Print the merged data
+print(merged_data)
+
+```
+###Data Management: Extracting and Renaming Columns in Merged Dataset
+
+```{r}
+column_names <- names(merged_data)
+
+# Print the column names
+print(column_names)
+
+# Rename the 'Temperature.(°F)' column to 'Temperature'
+colnames(merged_data)[colnames(merged_data) == 'Temperature.(°F)'] <- 'Temperature'
+
+```
+###Crime Analysis: Top 5 Crime Types in Brooklyn Visualized with a Bar Graph
+
+```{r}
+
+library(ggplot2)
+
+# Filter data for BROOKLYN
+brooklyn_data <- merged_data[merged_data$BORO_NM == "BROOKLYN", ]
+
+# Group data by OFNS_DESC and calculate count
+crime_counts <- table(brooklyn_data$OFNS_DESC)
+
+# Create a data frame from the counts
+crime_df <- data.frame(Type = names(crime_counts), Count = as.numeric(crime_counts))
+
+# Select the top 5 crime types
+top5_crimes <- head(crime_df[order(crime_df$Count, decreasing = TRUE), ], 5)
+
+# Plot the bar graph for the top 5 crimes
+ggplot(top5_crimes, aes(x = Type, y = Count, fill = Type)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Crime Type", y = "Count of Incidents", title = "Top 5 Crime Incidents in BROOKLYN") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+###Data Filtering: Isolating Brooklyn-Related Records from the Merged Dataset
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+
+# Filter for Brooklyn
+brooklyn_data <- merged_data %>% 
+  filter(BORO_NM == "BROOKLYN")
+
+```
+###Seasonal Trend Analysis: Aggregating Brooklyn Crime Data by Season
+
+```{r}
+# Function to assign seasons to dates
+assign_season <- function(date) {
+  month <- as.numeric(format(date, "%m"))
+  if (month %in% c(12, 1, 2)) {
+    return("Winter")
+  } else if (month %in% 3:5) {
+    return("Spring")
+  } else if (month %in% 6:8) {
+    return("Summer")
+  } else {
+    return("Fall")
+  }
+}
+
+# Add a season column
+brooklyn_data$Season <- sapply(as.Date(brooklyn_data$CMPLNT_FR_DT, "%Y-%m-%d"), assign_season)
+
+# Aggregate data by season
+seasonal_crime_trends <- brooklyn_data %>% 
+  group_by(Season) %>% 
+  summarise(Total_Crimes = n())
+seasonal_crime_trends
+```
+###Correlation Analysis: Examining the Relationship Between Temperature and Crime Rates in Brooklyn
+
+```{r}
+library(dplyr)
+# Aggregate data by temperature
+crime_by_temp <- brooklyn_data %>% 
+  group_by(Temperature) %>% 
+  summarise(Total_Crimes = n())
+
+# Linear regression between Temperature and Total Crimes
+crime_temp_model <- lm(Total_Crimes ~ Temperature, data = crime_by_temp)
+
+# Summary of the model
+summary(crime_temp_model)
+
+```
+###Temporal Analysis: Daily Crime Trends in Brooklyn Over Time
+
+```{r}
+# Convert date to Date type and sort data
+brooklyn_data$Date <- as.Date(brooklyn_data$CMPLNT_FR_DT, "%Y-%m-%d")
+brooklyn_data_sorted <- brooklyn_data %>% arrange(Date)
+
+# Time Series Analysis
+# Aggregate crime count by date
+daily_crime_count <- brooklyn_data_sorted %>% 
+  group_by(Date) %>% 
+  summarise(Daily_Crime_Count = n())
+
+# Plot the time series
+library(ggplot2)
+ggplot(daily_crime_count, aes(x = Date, y = Daily_Crime_Count)) + 
+  geom_line() + 
+  labs(title = "Daily Crime Count in Brooklyn", x = "Date", y = "Crime Count")
+
+```
+
+```{r}
+install.packages("forecast")
+library(forecast)
+library(dplyr)
+library(lubridate)
+
+```
+###Forecasting Brooklyn Crime Trends: Applying ARIMA Model for Future Predictions
+
+```{r}
+# Convert date string to Date object
+data$CMPLNT_FR_DT <- ymd(data$CMPLNT_FR_DT)
+
+# Filter for Brooklyn data
+brooklyn_data <- filter(data, BORO_NM == "BROOKLYN")
+
+# Create a new dataframe with year and month columns
+monthly_crime_count <- brooklyn_data %>%
+  mutate(year = year(CMPLNT_FR_DT), month = month(CMPLNT_FR_DT)) %>%
+  group_by(year, month) %>%
+  summarize(crime_count = n(), .groups = 'drop')
+
+# Ensure data is ordered
+monthly_crime_count <- monthly_crime_count %>% arrange(year, month)
+
+# Our data starts in January 2023
+crime_ts <- ts(monthly_crime_count$crime_count, start = c(2023, 1), frequency = 12)
+
+# Fit the ARIMA model
+fit <- auto.arima(crime_ts)
+
+# Forecast for the next 6 months
+forecast <- forecast(fit, h = 6)
+
+# Print the forecast
+print(forecast)
+
+
+```
+Point Forecast: This is the predicted number of crimes for each month. In our case, it's consistently 7969.444 for each month from October 2023 to March 2024. This suggests that the model predicts a steady rate of crime occurrences in Brooklyn without significant monthly variation.
+Lo 80 and Hi 80: These columns represent the lower and upper bounds of an 80% prediction interval. For example, in October 2023, the model is 80% confident that the actual number of crimes will be between approximately 7340 and 8599.
+Lo 95 and Hi 95: Similarly, these columns represent the lower and upper bounds of a 95% prediction interval. The range is wider than the 80% interval, indicating more uncertainty. For October 2023, the model is 95% confident that the actual number of crimes will be between approximately 7007 and 8932.
+The fact that the point forecasts are the same for each month suggests that the model did not find a significant trend or seasonal pattern in the data. This could be due to several reasons such as the nature of the data, the model's inability to capture complex patterns, or the dataset not having strong seasonal or trend components.
+
+###Visualization: Plotting the ARIMA Forecast for Future Crime Trends in Brooklyn
+
+```{r}
+plot(forecast)
+```
+```{r}
+install.packages(c("forecast", "tseries", "ggplot2"))
+library(forecast)
+library(tseries)
+library(ggplot2)
+
+```
+###Statistical Testing: Augmented Dickey-Fuller Test for Stationarity in Crime Time Series Data
+
+```{r}
+adf.test(crime_ts, alternative = "stationary")
+crime_ts_diff <- diff(crime_ts, differences = 1)
+adf.test(crime_ts_diff, alternative = "stationary")
+
+```
+###Time Series Analysis: Autocorrelation and Partial Autocorrelation for Differenced Crime Data
+
+```{r}
+Acf(crime_ts_diff, main="ACF for Differenced Series")
+Pacf(crime_ts_diff, main="PACF for Differenced Series")
+```
+###Model Fitting: Applying Non-Seasonal ARIMA Model to Crime Time Series Data
+
+```{r}
+fit <- auto.arima(crime_ts, seasonal = FALSE) # set seasonal=TRUE for a seasonal model
+```
+###Model Summary: Detailed Analysis of the ARIMA Model Fit on Crime Data
+
+```{r}
+summary(fit)
+```
+###Future Crime Trend Projection: ARIMA Model Forecast for the Next Six Months
+
+```{r}
+forecast <- forecast(fit, h=6)
+plot(forecast)
+```
+###Model Validation: Analyzing Residuals of the Fitted ARIMA Model
+```{r}
+# Check residuals
+checkresiduals(fit)
+```
+###ARIMA(0,1,0) Model Application: Fitting, Summary, and Forecasting for Crime Data
+
+```{r}
+library(forecast)
+
+# Fit an ARIMA(0,1,0) model
+fit2 <- Arima(crime_ts, order=c(0,1,0))
+
+# Alternatively, using base R
+# fit <- arima(crime_ts, order=c(0,1,0))
+
+# Summary of the model
+summary(fit2)
+
+# Forecast using the fitted model
+forecast <- forecast(fit2, h=6)
+
+# Plot the forecast
+plot(forecast)
+
+```
+###Residual Analysis: Checking and Visualizing Residuals of the ARIMA(0,1,0) Model
+```{r}
+# Check residuals
+checkresiduals(fit2)
+
+# Alternatively, manually plot residuals
+plot(fit$residuals)
+abline(h=0, col="red")
+
+```
+ARIMA Model Summary:
+ARIMA(0,1,0) signifies no autoregression (AR) component (p=0), a differencing order of 1 (d=1), and no moving average (MA) component (q=0).
+The sigma^2 and log likelihood values give an indication of the model fit. Lower values of AIC (Akaike Information Criterion) and BIC (Bayesian Information Criterion) are better, but these values are more useful for comparing models.
+The Training set error measures such as ME (Mean Error), RMSE (Root Mean Square Error), and MAE (Mean Absolute Error) provide information on the average prediction errors.
+Ljung-Box Test:
+This is a test for checking the randomness of residuals (errors). A non-significant p-value (greater than 0.05), as in our case (0.4653), suggests that the residuals are independently distributed, which is a good sign.
+Forecast Output:
+The Point Forecast column gives the forecasted crime counts for upcoming months. The similar values across months indicate a flat forecast, suggesting that the model expects future values to be similar to recent past values.
+Lo 80, Hi 80, Lo 95, and Hi 95 provide the lower and upper bounds of the 80% and 95% prediction intervals, respectively. These intervals represent the range within which future values are expected to fall with respective confidence levels.
+
+
+odel Type: ARIMA(0,1,0) is a simple model suggesting that the data is a random walk. This model type is often used when the data shows no clear trend or seasonal patterns.
+sigma^2 (Variance of the Residuals): The value of 413552 suggests the variance of the residuals in our model. Lower values generally indicate a better fit, but this is relative and should be compared with other models.
+Log Likelihood: The log likelihood of -63.08 is a measure of the likelihood of the model given the data. Higher values (closer to zero) are better, but this metric is primarily useful when comparing models.
+AIC, AICc, BIC:
+AIC (Akaike Information Criterion) = 128.16
+AICc (Corrected Akaike Information Criterion) = 128.83
+BIC (Bayesian Information Criterion) = 128.24
+These are measures used for model comparison. Lower values are better and suggest a more optimal model fit.
+Training Set Error Measures:
+ME (Mean Error): -118.9794 indicates the average error of the predictions. The negative sign suggests underprediction.
+RMSE (Root Mean Square Error): 606.3019 measures the average magnitude of the errors. Lower values are better.
+MAE (Mean Absolute Error): 484.5761 is the average absolute error. Like RMSE, lower values indicate a better fit.
+MPE (Mean Percentage Error) and MAPE (Mean Absolute Percentage Error): These give the percentage errors. MPE of -1.873842% and MAPE of 6.312193% suggest the average error in percentage terms.
+MASE (Mean Absolute Scaled Error): Not available (NaN) in this output.
+ACF1: The first lag autocorrelation of residuals (-0.3137135). Ideally, this should be close to zero in a well-fitted model.
+Interpretation:
+The model is quite basic and might not capture any complex patterns in the data.
+The AIC, AICc, and BIC values are useful for comparing this model with others. If you have other models, compare these values to see which model fits best.
+The error metrics suggest there is some level of prediction error. Depending on our requirements, this may or may not be acceptable.
+The negative ME indicates a tendency of the model to underpredict.
+
+Interpretation:
+The model is quite basic and might not capture any complex patterns in the data.
+The AIC, AICc, and BIC values are useful for comparing this model with others. If you have other models, compare these values to see which model fits best.
+The error metrics suggest there is some level of prediction error. Depending on our requirements, this may or may not be acceptable.
+The negative ME indicates a tendency of the model to underpredict.
+
+###Model Comparison and Evaluation: Assessing ARIMA Models Using AIC, AICc, BIC, and Accuracy Metrics
+```{r}
+# Assuming fit is your current ARIMA(0,1,0) model and fit2 is another ARIMA model
+# Compare AIC, AICc, and BIC
+# Install and load the MuMIn or bbmle package
+install.packages("MuMIn")
+library(MuMIn)
+AIC(fit)
+AICc(fit)
+BIC(fit)
+
+AIC(fit2)
+AICc(fit2)
+BIC(fit2)
+
+# Compare error measures (RMSE, MAE, etc.)
+accuracy(fit)
+accuracy(fit2)
+
+```
+###Residual Diagnostics: Analyzing and Testing Residuals of the ARIMA(0,1,0) Model
+
+```{r}
+# Plotting residuals
+residuals <- residuals(fit2)
+plot(residuals, main="Residuals of ARIMA(0,1,0) Model")
+abline(h = 0, col = "red")
+
+# ACF and PACF plots for residuals
+Acf(residuals, main="ACF of Residuals")
+Pacf(residuals, main="PACF of Residuals")
+
+# Ljung-Box test to check if residuals are white noise
+Box.test(residuals, lag = 20, type = "Ljung-Box")
+
+```
+###Machine Learning Implementation: Building a Random Forest Model for Suspect Sex Prediction
+
+```{r}
+library(dplyr)
+library(randomForest)
+
+selected_columns <- c('LAW_CAT_CD', 'SUSP_AGE_LAB', 'SUSP_RACE', 'SUSP_SEX')
+data_selected <- brooklyn_data[, selected_columns] 
+
+# Ensure all predictor variables are factors
+brooklyn_data$LAW_CAT_CD <- as.factor(data_selected$LAW_CAT_CD)
+data_selected$SUSP_AGE_LAB <- as.factor(data_selected$SUSP_AGE_LAB)
+data_selected$SUSP_RACE <- as.factor(data_selected$SUSP_RACE)
+
+# Ensure target variable is a factor (for classification)
+data_selected$SUSP_SEX <- as.factor(data_selected$SUSP_SEX)
+
+# Building a simpler Random Forest model
+model <- randomForest(SUSP_SEX ~ ., data = data_selected, ntree = 50) # Reduced ntree for initial testing
+
+# Viewing the model
+print(model)
+```
+
+###Model Evaluation: Generating and Analyzing the Confusion Matrix of Random Forest Predictions
+```{r}
+predictions <- predict(model, data_selected)
+
+# Confusion Matrix
+confusionMatrix <- table(data_selected$SUSP_SEX, predictions)
+print(confusionMatrix)
+
+```
+###Model Optimization: Tuning the Random Forest Model Parameters for Enhanced Predictive Accuracy
+
+```{r}
+# Tune the model (example with mtry)
+tuned_model <- randomForest(SUSP_SEX ~ ., data = data_selected, ntree = 100, mtry = 3)
+
+```
+###Data Preparation and Random Forest Model Application for Suspect Sex Prediction
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(randomForest)
+library(caret)
+
+# Selecting specific columns and dropping NA values
+selected_columns <- c('LAW_CAT_CD', 'SUSP_AGE_LAB', 'SUSP_RACE', 'SUSP_SEX')
+data_selected <- data[, selected_columns, drop = FALSE] %>% na.omit()
+
+# Ensure all predictor variables are factors
+data_selected$LAW_CAT_CD <- as.factor(data_selected$LAW_CAT_CD)
+data_selected$SUSP_AGE_LAB <- as.factor(data_selected$SUSP_AGE_LAB)
+data_selected$SUSP_RACE <- as.factor(data_selected$SUSP_RACE)
+
+# Ensure target variable is a factor (for classification)
+data_selected$SUSP_SEX <- as.factor(data_selected$SUSP_SEX)
+
+# Building a simpler Random Forest model
+model <- randomForest(SUSP_SEX ~ ., data = data_selected, ntree = 100) # Reduced ntree for initial testing
+
+# Viewing the model
+print(model)
+
+
+new_data <- data.frame(
+  LAW_CAT_CD = factor(c("Felony", "Misdemeanor", "Violation"), levels = levels(data_selected$LAW_CAT_CD)),
+  SUSP_AGE_LAB = factor(c("Young", "Adult", "Senior"), levels = levels(data_selected$SUSP_AGE_LAB)),
+  SUSP_RACE = factor(c("Black", "White", "Asian"), levels = levels(data_selected$SUSP_RACE))
+)
+
+# Ensure matching factor levels for SUSP_RACE
+new_data$SUSP_RACE <- factor(new_data$SUSP_RACE, levels = levels(data_selected$SUSP_RACE))
+
+# Re-run prediction (on new_data without the target variable)
+new_predictions <- predict(model, new_data)
+
+# Print predictions
+print(new_predictions)
+```
+###Feature Importance Analysis: Evaluating Variable Significance in the Random Forest Model
+
+```{r}
+# Feature importance
+
+importance <- importance(model)
+varImpPlot(model)
+
+```
+###Statistical Analysis: Applying ANOVA to Examine the Effect of Seasons on Crime Trends
+
+```{r}
+# Fit ANOVA model
+anova_model <- aov(Total_Crimes ~ Season , data = seasonal_crime_trends)
+
+# Summary of ANOVA
+summary(anova_model)
+```
+
+###Data Transformation: Mapping and Simplifying Victim Age Groups in Brooklyn Crime Data
+
+```{r}
+library(dplyr)
+
+# Define a function to map age groups
+map_age_group <- function(age_group) {
+  ages <- unlist(strsplit(age_group, ","))
+  if ("18-24" %in% ages) {
+    return("18-24")
+  } else if ("25-44" %in% ages) {
+    return("25-44")
+  } else if ("65+" %in% ages) {
+    return("65+")
+  } else {
+    return(NA)  
+  }
+}
+
+# Apply the function to create a new variable
+brooklyn_data <- brooklyn_data %>%
+  mutate(VIC_AGE_GROUP_REDUCE = sapply(VIC_AGE_GROUP, map_age_group))
+
+# View the unique values in the new variable
+unique(brooklyn_data$VIC_AGE_GROUP_REDUCE)
+
+```
+###Data Cleansing: Excluding Records with Missing Victim Age Group Information
+
+```{r}
+# Remove rows with NA in VIC_AGE_GROUP_REDUCE
+brooklyn_data_n <- na.omit(brooklyn_data)
+
+# View the new data
+head(brooklyn_data_n)
+
+```
+###Statistical Analysis: ANOVA and Post Hoc Testing on Victim Age Groups in Brooklyn Crime Data
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(broom)
+# Filter for relevant categories
+filtered_data <- brooklyn_data_n %>%
+  filter(VIC_AGE_GROUP_REDUCE %in% c("65+","25-44","18-24"))
+
+# Fit ANOVA model
+anova_model <- aov(CMPLNT_NUM ~ VIC_AGE_GROUP_REDUCE, data = filtered_data)
+
+# Summarize ANOVA results
+anova_results <- tidy(anova_model)
+print(anova_results)
+
+# Post hoc analysis (Tukey HSD test) for pairwise comparisons
+posthoc <- TukeyHSD(anova_model)
+print(posthoc)
+```
+###Analyzing Crime Data: ANOVA and Tukey HSD Tests for Victim Age Group Comparisons in Brooklyn
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(broom)
+# Filter for relevant categories
+filtered_data <- brooklyn_data %>%
+  filter(VIC_AGE_GROUP_REDUCE %in% c("65+","25-44","18-24"))
+
+# Fit ANOVA model
+anova_model <- aov(CMPLNT_NUM ~ VIC_AGE_GROUP_REDUCE, data = filtered_data)
+
+# Summarize ANOVA results
+anova_results <- tidy(anova_model)
+print(anova_results)
+
+# Post hoc analysis (Tukey HSD test) for pairwise comparisons
+posthoc <- TukeyHSD(anova_model)
+print(posthoc)
+
+```
+###Data Exploration: Counting the Number of Unique Levels for Each Factor in Brooklyn Crime Dataset
+
+```{r}
+
+sapply(brooklyn_data, function(x) length(levels(factor(x))))
+
+```
+###Data Pruning: Removing Columns with Only One Unique Value from Brooklyn Crime Dataset
+
+```{r}
+single_level_vars <- names(brooklyn_data)[sapply(brooklyn_data, function(x) length(levels(factor(x))) == 1)]
+
+# Remove variables with only one level
+data <- brooklyn_data[, !names(brooklyn_data) %in% single_level_vars, drop = FALSE]
+```
+
+###Multifactorial ANOVA: Examining the Influence of Legal Category, Suspect Race, Sex, and Temperature on Complaint Numbers
+```{r}
+anova_model <- aov(CMPLNT_NUM ~ LAW_CAT_CD  + SUSP_RACE + SUSP_SEX + Temperature, data = brooklyn_data)
+print(anova_model)
+```
+###Aggregation Analysis: Summarizing Total Crimes by Victim Age Group in Brooklyn Crime Data
+
+```{r}
+library(dplyr)
+crime_sum_by_age_group <- brooklyn_data %>%
+  group_by(VIC_AGE_GROUP_REDUCE) %>%
+  summarize(Total_Crimes = n())
+
+# View the result
+print(crime_sum_by_age_group)
+
+```
+###Comparative Analysis: Assessing Crime Incidence Across Different Age Groups with ANOVA
+
+```{r}
+# Sample data frame 
+data <- data.frame(Age_Group = c("18-24","25-44", "65+", "Other"),   
+        Crimes = c(6280, 28296, 3805, 33344) ) # Create a new data frame with the sums of crimes for each age group 
+sum_data <- aggregate(Crimes ~ Age_Group, data, sum) # Rename the 'Crimes' column to 'Total_Crimes' 
+colnames(sum_data)[2] <- "Total_Crimes" # Print the new data frame 
+print(sum_data)
+```
+###Statistical Analysis: Applying ANOVA to Evaluate Crime Variation Among Age Groups
+
+```{r}
+fit<- aov(Crimes ~ Age_Group, data= data)
+summary(fit)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
